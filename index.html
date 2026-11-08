@@ -1,0 +1,675 @@
+<!DOCTYPE html> 
+<!-- Average Skin Tone -->
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MetaHuman Complexion Experiment System (6-Color Batch Adjustment - LAB Modulation)</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #242424; color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        
+        .wrapper { width: 1020px; text-align: center; padding: 10px; box-sizing: border-box; }
+        h2 { font-size: 22px; margin: 0 0 5px 0; letter-spacing: 1px; }
+        .subtitle { font-size: 13px; color: #cccccc; margin: 0 0 20px 0; }
+        
+        .multi-image-view {
+            display: flex; justify-content: space-between; gap: 15px;
+            margin: 0 auto 25px auto; width: 100%;
+        }
+
+        .image-container {
+            position: relative; width: 320px; height: 251px;
+            border: 2px solid #333333; background-color: #2a2a2a; overflow: hidden; border-radius: 4px;
+        }
+        .image-label {
+            position: absolute; top: 5px; left: 5px; z-index: 10;
+            background: rgba(0,0,0,0.6); padding: 2px 6px; font-size: 11px; border-radius: 3px; color: #ccc;
+        }
+
+        /* 【1. Base Layer】Face base image */
+        .base-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+        
+        /* 【2. Overlay Layer】Canvas for real-time color synthesis */
+        .color-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+
+        /* Hidden Mask Image */
+        .hidden-mask { display: none; }
+
+        /* コントロールエリア全体を横並びにするラッパー */
+        .panel-container { display: flex; justify-content: center; align-items: stretch; gap: 16px; margin: 0 auto; width: fit-content; }
+
+        /* 基準色の大型表示カード */
+        .reference-card { width: 140px; background: #2f2f2f; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; border: 1px solid #444; }
+        .reference-title { font-size: 12px; font-weight: bold; color: #cccccc; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .reference-subtitle { font-size: 10px; color: #888888; margin-bottom: 12px; }
+        .reference-swatch { width: 100%; flex: 1; min-height: 120px; border-radius: 6px; border: 2px solid #555555; box-shadow: inset 0 0 10px rgba(0,0,0,0.3); transition: background-color 0.2s ease; }
+        .reference-label { margin-top: 10px; font-size: 13px; font-weight: bold; color: #ffffff; }
+
+        /* コントロールパネル */
+        .control-panel { width: 500px; margin: 0; background: #2f2f2f; padding: 20px; border-radius: 8px; box-sizing: border-box; }
+        
+        /* Color Selector */
+        .color-selector-wrapper { display: flex; flex-direction: column; margin-bottom: 20px; }
+        .color-selector { display: flex; justify-content: space-between; gap: 8px; }
+        .color-btn-container { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        
+        .color-btn { width: 100%; height: 48px; border: 2px solid #555; border-radius: 6px; cursor: pointer; transition: all 0.2s; outline: none; }
+        .color-btn.active { border-color: #ffffff; transform: scale(1.06); box-shadow: 0 0 10px rgba(255,255,255,0.6); }
+        
+        /* ステータスバッジ */
+        .status-dot { font-size: 10px; color: #777777; transition: all 0.2s ease; white-space: nowrap; padding: 2px 6px; border-radius: 10px; }
+        .status-dot.active { background-color: #ffffff; color: #111111; font-weight: bold; box-shadow: 0 0 6px rgba(255, 255, 255, 0.7); } 
+        .status-dot.saved { background-color: transparent; color: #ffaa00; }  
+
+        .slider-group { margin-bottom: 18px; text-align: left; }
+        .slider-labels { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+        
+        .label-blue { color: #5dade2; font-weight: bold; }
+        .label-yellow { color: #f4d03f; font-weight: bold; }
+        .label-dark { color: #95a5a6; font-weight: bold; }
+        .label-bright { color: #eb984e; font-weight: bold; }
+        .label-muted { color: #bdc3c7; font-weight: bold; }
+        .label-vivid { color: #e74c3c; font-weight: bold; }
+
+        input[type="range"] { width: 100%; -webkit-appearance: none; background: #444444; height: 6px; border-radius: 3px; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; cursor: pointer; }
+
+        .guide-text { font-size: 12px; color: #aaaaaa; margin-top: 14px; margin-bottom: 8px; text-align: center; }
+        .submit-btn { width: 100%; padding: 12px; background-color: #27ae60; border: none; border-radius: 4px; color: #ffffff; font-size: 14px; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        .submit-btn:disabled { background-color: #444444; color: #888888; cursor: not-allowed; }
+
+        /* 実験開始前の明るさ統制モーダル */
+        #calibration-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-card {
+            background: #2d2d2d; border: 1px solid #444; border-radius: 8px;
+            width: 480px; padding: 25px; text-align: left; box-sizing: border-box;
+        }
+        .modal-card h3 { margin-top: 0; font-size: 18px; color: #ffffff; }
+        .modal-card ul { font-size: 13px; line-height: 1.6; color: #dddddd; padding-left: 20px; }
+        .modal-card label { display: block; margin: 20px 0 15px 0; font-size: 13px; color: #ffcc00; cursor: pointer; }
+        .start-btn { width: 100%; padding: 10px; background: #3498db; color: #fff; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; }
+        .start-btn:disabled { background: #555; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+    <!-- 実験前設定統制モーダル -->
+    <div id="calibration-modal">
+        <div class="modal-card">
+            <h3>【開始前の確認事項：画面表示の固定】</h3>
+            
+            <ul>
+                <li><strong>明るさの固定:</strong> 画面の明るさを「100%（最大）」に設定し、終了するまで変更しないでください。</li>
+                <li><strong>夜間モードの解除:</strong> 「Night Shift」「夜間モード」「True Tone」等の色温度自動変更機能は<strong>オフ</strong>にしてください。</li>
+                <li><strong>照明の固定:</strong> 部屋の照明を消して、暗室で実施してください。</li>
+            </ul>
+            <div style="margin: 15px 0; font-size: 13px;">
+                <label style="display:block; margin-bottom:5px; font-weight:bold;">1. 実際の現在の部屋の照明環境：</label>
+                <select id="select-light" style="width:100%; padding:8px; background:#1f1f1f; color:#fff; border:1px solid #555; border-radius:4px;">
+                    <option value="darkroom">完全な暗室（消灯）</option>
+                    <option value="dim_light">実施不可_間接照明・薄暗い室内</option>
+                    <option value="indoor_lamp">実施不可_一般的な室内照明（蛍光灯・LED）</option>
+                    <option value="daylight">実施不可_昼間の自然光が入る環境</option>
+                </select>
+            </div>
+
+            <div style="margin: 15px 0; font-size: 13px;">
+                <label style="display:block; margin-bottom:5px; font-weight:bold;">2. ブルーライトカット眼鏡や保護フィルムの使用：</label>
+                <select id="select-filter" style="width:100%; padding:8px; background:#1f1f1f; color:#fff; border:1px solid #555; border-radius:4px;">
+                    <option value="none">使用していない（裸眼または通常の眼鏡/コンタクト）</option>
+                    <option value="blue_glasses">実施不可_ブルーライトカット眼鏡を着用</option>
+                    <option value="blue_film">実施不可_画面にブルーライトカットフィルムを貼っている</option>
+                    <option value="both">実施不可_画面に覗き見防止または保護フィルムを貼っている</option>
+                </select>
+            </div>
+            <label>
+                <input type="checkbox" id="chk-calibrate"> 上記の画面設定を確認・固定しました
+            </label>
+            <button class="start-btn" id="btn-start" disabled>開始する</button>
+        </div>
+    </div>
+
+    <div class="wrapper">
+        <h2>Acceptable Color Range</h2>
+        <div class="subtitle">Please adjust the sliders for each of the 6 base colors to find the most suitable color.</div>
+
+        <div class="multi-image-view">
+            <div class="image-container">
+                <span class="image-label">Right View</span>
+                <img src="YellowL_Tout.png" class="base-image" alt="" onerror="this.style.display='none';">
+                <img src="YellowL_Tonly.png" class="hidden-mask" id="mask-left" alt="">
+                <canvas class="color-overlay" id="canvas-left" width="320" height="251"></canvas>
+            </div>
+
+            <div class="image-container">
+                <span class="image-label">Front View</span>
+                <img src="YellowF_Tout.png" class="base-image" alt="" onerror="this.style.display='none';">
+                <img src="YellowF_Tonly.png" class="hidden-mask" id="mask-base" alt="">
+                <canvas class="color-overlay" id="canvas-base" width="320" height="251"></canvas>
+            </div>
+
+            <div class="image-container">
+                <span class="image-label">Left View</span>
+                <img src="YellowR_Tout.png" class="base-image" alt="" onerror="this.style.display='none';">
+                <img src="YellowR_Tonly.png" class="hidden-mask" id="mask-right" alt="">
+                <canvas class="color-overlay" id="canvas-right" width="320" height="251"></canvas>
+            </div>
+        </div>
+
+        <div class="panel-container">
+            <!-- 基準色大型表示カード -->
+            <div class="reference-card">
+                <div class="reference-title">Base Color</div>
+                <div class="reference-subtitle">基準アンカー色</div>
+                <div class="reference-swatch" id="reference-swatch"></div>
+                <div class="reference-label" id="reference-name">Red</div>
+            </div>
+
+            <!-- コントロールパネル -->
+            <div class="control-panel">
+                <div class="color-selector-wrapper">
+                    <div class="color-selector">
+                        <div class="color-btn-container">
+                            <button class="color-btn active" data-color="Red" style="background-color: lab(50% 42.68 14.23);"></button>
+                            <span class="status-dot active" id="dot-Red">● Adjusting</span>
+                        </div>
+                        <div class="color-btn-container">
+                            <button class="color-btn" data-color="Yellow" style="background-color: lab(50% -5.18 31.06);"></button>
+                            <span class="status-dot" id="dot-Yellow">● Pending</span>
+                        </div>
+                        <div class="color-btn-container">
+                            <button class="color-btn" data-color="Green" style="background-color: lab(50% -22.50 9.37);"></button>
+                            <span class="status-dot" id="dot-Green">● Pending</span>
+                        </div>
+                        <div class="color-btn-container">
+                            <button class="color-btn" data-color="Blue" style="background-color: lab(50% -6.02 -18.05);"></button>
+                            <span class="status-dot" id="dot-Blue">● Pending</span>
+                        </div>
+                        <div class="color-btn-container">
+                            <!-- Purpleのインラインスタイルを正確な基準値に修正 -->
+                            <button class="color-btn" data-color="Purple" style="background-color: lab(50% 36.85 -36.85);"></button>
+                            <span class="status-dot" id="dot-Purple">● Pending</span>
+                        </div>
+                        <div class="color-btn-container">
+                            <button class="color-btn" data-color="Grey" style="background-color: lab(50% 0 0);"></button>
+                            <span class="status-dot" id="dot-Grey">● Pending</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-labels">
+                        <span class="label-blue">■ Bluish (Cool)</span>
+                        <span class="label-yellow">Yellowish (Warm) ■</span>
+                    </div>
+                    <input type="range" id="slider-tone" min="-3" max="3" step="1" value="0">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-labels">
+                        <span class="label-dark">■ Darker</span>
+                        <span class="label-bright">Lighter ■</span>
+                    </div>
+                    <input type="range" id="slider-brightness" min="-3" max="3" step="1" value="0">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-labels">
+                        <span class="label-muted">■ Muted（Low Chroma）</span>
+                        <span class="label-vivid">Vivid（High Chroma） ■</span>
+                    </div>
+                    <input type="range" id="slider-chroma" min="-3" max="3" step="1" value="0">
+                </div>
+
+                <div class="guide-text" id="guide-text">Please review and adjust all 6 colors before submitting.</div>
+                <button class="submit-btn" id="btn-submit" disabled>Submit All 6 Color Results</button>
+            </div>
+        </div>
+    </div>
+
+    <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
+
+    <script>
+        const chkCalibrate = document.getElementById('chk-calibrate');
+        const btnStart = document.getElementById('btn-start');
+        const modal = document.getElementById('calibration-modal');
+        const selectLight = document.getElementById('select-light');
+        const selectFilter = document.getElementById('select-filter');
+        let brightnessFixedConfirmed = false;
+
+        // --- 追加: 計測用変数 ---時間計測用タイマー変数と操作カウンター、開始時の記録処理
+        let experimentStartTime = null;
+        let colorSwitchTime = null;
+        let totalInteractions = 0;
+        let envData = { ambient_light: '', screen_filter: '' };
+        const colorDurations = { Red: 0, Yellow: 0, Green: 0, Blue: 0, Purple: 0, Grey: 0 };
+
+        chkCalibrate.addEventListener('change', () => {
+            btnStart.disabled = !chkCalibrate.checked;
+        });
+
+        btnStart.addEventListener('click', () => {
+            brightnessFixedConfirmed = true;
+            // --- 追加: 時間計測と回答内容の保存 ---
+            experimentStartTime = performance.now();
+            colorSwitchTime = performance.now();
+            envData.ambient_light = selectLight.value;
+            envData.screen_filter = selectFilter.value;
+            modal.style.display = 'none';
+        });
+
+        //チェック状態を監視してボタンの有効/無効の切り替え
+        function syncButtonState(){
+            btnStart.disabled = !chkCalibrate.checked;
+        }
+        chkCalibrate.addEventListener('change', syncButtonState);
+
+        // リロード時などで既にチェックが入っている場合に対応
+        syncButtonState();
+
+        btnStart.addEventListener('click', () => {
+            brightnessFixedConfirmed = true;
+            modal.style.display = 'none';
+        });
+
+        // =========================================================================
+            //端末・ディスプレイ・GPUメタデータの自動取得（強化版）
+        // =========================================================================
+        async function collectDeviceMetadata() {
+            const meta = {
+                os_type: 'unknown', //OS名
+                os_version: 'unknown',  //OSバージョン
+                browser: 'unknown', //ブラウザ名(Chrome, Safari, Edge, Firefox等)
+                browser_version: 'unknown', //ブラウザバージョン
+                color_gamut: 'srgb',    //ディスプレイ色域（srgb, p3, rec2020）
+                dynamic_range: 'standard', // 明暗の表現範囲（SDR or HDR）
+                color_depth: window.screen.colorDepth || 24,    //画面が表現できる色数・色深度・ビット深度（24bit, 30bit）
+                device_pixel_ratio: window.devicePixelRatio || 1,   //ディスプレイの拡大率やRetina・高精細画面の倍率（例1.0, 2.0）
+                screen_res: `${window.screen.width}x${window.screen.height}`,   //ディスプレイの物理解像度（横幅×高さ, 1920×1080）
+                gpu_renderer: 'unknown',    //端末に掲載されているGPUの名前(intel, NIVIDIA, AppleGPU等)
+                // --- 追加可能なシステム・環境項目 ---
+                cpu_cores: navigator.hardwareConcurrency || 'unknown',          // CPU論理コア数
+                device_memory: navigator.deviceMemory || 'unknown',              // RAM目安(GB)
+                viewport_size: `${window.innerWidth}x${window.innerHeight}`,     // ブラウザ表示サイズ
+                screen_avail: `${window.screen.availWidth}x${window.screen.availHeight}`, // タスクバー除く領域
+                dark_mode: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', // OSテーマ
+                touch_points: navigator.maxTouchPoints || 0,                      // タッチ対応有無 
+            };
+
+            // 1. 色域 (Gamut) の判定
+            if (window.matchMedia && window.matchMedia('(color-gamut: rec2020)').matches) {
+                meta.color_gamut = 'rec2020';
+            } else if (window.matchMedia && window.matchMedia('(color-gamut: p3)').matches) {
+                meta.color_gamut = 'p3';
+            }
+
+            // 2. HDR (High Dynamic Range) の対応有無
+            if (window.matchMedia && (window.matchMedia('(dynamic-range: high)').matches || window.matchMedia('(video-dynamic-range: high)').matches)) {
+                meta.dynamic_range = 'hdr';
+            }
+
+            // 3. WebGL経由でのGPU/グラフィックス情報の取得
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (debugInfo) {
+                        meta.gpu_renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                    }
+                }
+            } catch (e) {
+                meta.gpu_renderer = 'blocked';
+            }
+
+            // 4. OS / ブラウザ詳細（High Entropy API / UserAgent）
+            if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+                try {
+                    const hints = await navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion', 'brands']);
+                    meta.os_type = hints.platform;
+                    meta.os_version = hints.platformVersion;
+                    const b = hints.brands.find(x => !['Not A(Brand', 'Chromium'].includes(x.brand)) || hints.brands[0];
+                    if (b) {
+                        meta.browser = b.brand;
+                        meta.browser_version = b.version;
+                    }
+                    return meta;
+                } catch (e) {}
+            }
+
+            // フォールバック (UserAgent文字列解析)
+            const ua = navigator.userAgent;
+            if (/Macintosh|Mac OS X/i.test(ua)) meta.os_type = 'macOS';
+            else if (/Windows NT/i.test(ua)) meta.os_type = 'Windows';
+            else if (/Android/i.test(ua)) meta.os_type = 'Android';
+            else if (/iPhone|iPad|iPod/i.test(ua)) meta.os_type = 'iOS';
+
+            if (/Edg\//i.test(ua)) meta.browser = 'Edge';
+            else if (/Chrome\//i.test(ua)) meta.browser = 'Chrome';
+            else if (/Safari\//i.test(ua)) meta.browser = 'Safari';
+            else if (/Firefox\//i.test(ua)) meta.browser = 'Firefox';
+
+            return meta;
+        }
+
+        // =========================================================================
+        // 1. 各色の基準プロファイル (Pythonの最適化二分探索スケールと完全一致)
+        // =========================================================================
+        const BASE_PROFILES = {
+            Red:    { L_base: 50.0, a_unit:  3.0, b_unit:  1.0,  tone_dir:  1.0, scale: 1.42265 },
+            Yellow: { L_base: 50.0, a_unit: -0.5, b_unit:  3.0,  tone_dir: -1.0, scale: 1.03532 },
+            Green:  { L_base: 50.0, a_unit: -3.0, b_unit:  1.25, tone_dir: -1.0, scale: 0.74987 },
+            Blue:   { L_base: 50.0, a_unit: -1.0, b_unit: -3.0,  tone_dir: -1.0, scale: 0.60176 },
+            Purple: { L_base: 50.0, a_unit:  2.5, b_unit: -2.5,  tone_dir:  1.0, scale: 1.47381 },
+            Grey:   { L_base: 50.0, a_unit:  0.0, b_unit:  0.0,  tone_dir:  0.0, scale: 1.00000 }
+        };
+
+        const experimentData = {
+            Red:    { tone: 0, brightness: 0, chroma: 0, visited: true },
+            Yellow: { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Green:  { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Blue:   { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Purple: { tone: 0, brightness: 0, chroma: 0, visited: false },
+            Grey:   { tone: 0, brightness: 0, chroma: 0, visited: false }
+        };
+
+        let currentBaseColor = 'Red';
+
+        const sliderTone = document.getElementById('slider-tone');
+        const sliderBrightness = document.getElementById('slider-brightness');
+        const sliderChroma = document.getElementById('slider-chroma');
+        
+        const canvases = [
+            { target: document.getElementById('canvas-left'), mask: document.getElementById('mask-left') },
+            { target: document.getElementById('canvas-base'), mask: document.getElementById('mask-base') },
+            { target: document.getElementById('canvas-right'), mask: document.getElementById('mask-right') }
+        ];
+
+        const btnSubmit = document.getElementById('btn-submit');
+        const guideText = document.getElementById('guide-text');
+        const colorBtns = document.querySelectorAll('.color-btn');
+        const refSwatch = document.getElementById('reference-swatch');
+        const refName = document.getElementById('reference-name');
+
+        // =========================================================================
+        // 2. 測色変換関数 (Pythonコードと完全同一の数式)
+        // =========================================================================
+        function labToXyz(L, a, b) {
+            const Xn = 95.047, Yn = 100.0, Zn = 108.883;
+            const delta = 6.0 / 29.0;
+            const deltaSq = delta * delta;
+
+            const fy = (L + 16.0) / 116.0;
+            const fx = a / 500.0 + fy;
+            const fz = fy - b / 200.0;
+
+            const fInv = t => (t > delta) ? Math.pow(t, 3) : 3.0 * deltaSq * (t - 4.0 / 29.0);
+            return [Xn * fInv(fx), Yn * fInv(fy), Zn * fInv(fz)];
+        }
+
+        function xyzToRgb(X, Y, Z) {
+            const x = X / 100.0;
+            const y = Y / 100.0;
+            const z = Z / 100.0;
+
+            const r_lin =  3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+            const g_lin = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+            const b_lin =  0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+
+            const gamma = c => (c <= 0.0031308) 
+                ? 12.92 * c 
+                : (1.055 * Math.pow(Math.max(0, c), 1.0 / 2.4) - 0.055);
+
+            return [
+                Math.max(0, Math.min(255, Math.round(gamma(r_lin) * 255.0))),
+                Math.max(0, Math.min(255, Math.round(gamma(g_lin) * 255.0))),
+                Math.max(0, Math.min(255, Math.round(gamma(b_lin) * 255.0)))
+            ];
+        }
+
+        // =========================================================================
+        // 3. 状態管理 & 基準色パッチ更新
+        // =========================================================================
+        function updateStatusDots() {
+            Object.keys(experimentData).forEach(color => {
+                const dot = document.getElementById(`dot-${color}`);
+                if (!dot) return;
+                if (color === currentBaseColor) {
+                    dot.className = 'status-dot active';
+                    dot.innerText = '● Adjusting';
+                } else if (experimentData[color].visited) {
+                    dot.className = 'status-dot saved';
+                    dot.innerText = '● Saved';
+                } else {
+                    dot.className = 'status-dot';
+                    dot.innerText = '● Pending';
+                }
+            });
+
+            const allVisited = Object.values(experimentData).every(d => d.visited);
+            if (allVisited) {
+                btnSubmit.disabled = false;
+                guideText.innerText = 'All 6 colors have been adjusted. Ready to submit.';
+                guideText.style.color = '#2ecc71';
+            }
+        }
+
+        function updateReferenceSwatch() {
+            const prof = BASE_PROFILES[currentBaseColor];
+            const L = prof.L_base;
+            let a = 0.0, b = 0.0;
+            
+            if (prof.a_unit === 0.0 && prof.b_unit === 0.0) {
+                a = 0.0;
+                b = 0.0;
+            } else {
+                const baseChromaMult = 10.0;
+                a = prof.a_unit * prof.scale * baseChromaMult;
+                b = prof.b_unit * prof.scale * baseChromaMult;
+            }
+
+            const xyz = labToXyz(L, a, b);
+            const rgb = xyzToRgb(xyz[0], xyz[1], xyz[2]);
+
+            refSwatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+            refName.innerText = currentBaseColor;
+        }
+        //操作イベントの追跡処理（色ごとの滞在時間とスライダを動かした回数をカウントする）
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // --- 追加: 前の色での滞在時間を加算 ---
+                const now = performance.now();
+                if (colorSwitchTime) {
+                    colorDurations[currentBaseColor] += (now - colorSwitchTime);
+                }
+                colorSwitchTime = now;
+
+                saveCurrentSliderValues();
+
+                colorBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                currentBaseColor = btn.getAttribute('data-color');
+                experimentData[currentBaseColor].visited = true;
+
+                sliderTone.value = experimentData[currentBaseColor].tone;
+                sliderBrightness.value = experimentData[currentBaseColor].brightness;
+                sliderChroma.value = experimentData[currentBaseColor].chroma;
+                
+                updateStatusDots();
+                updateColor();
+                updateReferenceSwatch();
+            });
+        });
+
+        function saveCurrentSliderValues() {
+            experimentData[currentBaseColor].tone = parseInt(sliderTone.value);
+            experimentData[currentBaseColor].brightness = parseInt(sliderBrightness.value);
+            experimentData[currentBaseColor].chroma = parseInt(sliderChroma.value);
+        }
+
+        // =========================================================================
+        // 4. 動的色変調処理 (Pythonの calc_color と完全一致)
+        // =========================================================================
+        function updateColor() {
+            const toneVal = parseInt(sliderTone.value);          
+            const brightnessVal = parseInt(sliderBrightness.value);  
+            const chromaVal = parseInt(sliderChroma.value); 
+
+            const prof = BASE_PROFILES[currentBaseColor];
+
+            const L = prof.L_base + brightnessVal * 4.0;
+            let a = 0.0, b = 0.0;
+
+            if (prof.a_unit === 0.0 && prof.b_unit === 0.0) {
+                a = 0.0;
+                b = toneVal * 1.0;
+            } else {
+                const baseChromaMult = 10.0 + chromaVal * 1.5;
+                const a_c = prof.a_unit * prof.scale * baseChromaMult;
+                const b_c = prof.b_unit * prof.scale * baseChromaMult;
+
+                const C_val = Math.sqrt(a_c * a_c + b_c * b_c);
+                const h_rad = Math.atan2(b_c, a_c);
+
+                const delta_h_rad = (toneVal * prof.tone_dir * 2.0) * Math.PI / 180.0;
+                const h_new_rad = h_rad + delta_h_rad;
+
+                a = C_val * Math.cos(h_new_rad);
+                b = C_val * Math.sin(h_new_rad);
+            }
+
+            const newXyz = labToXyz(L, a, b);
+            const rgb = xyzToRgb(newXyz[0], newXyz[1], newXyz[2]);
+            
+            canvases.forEach(obj => {
+                const ctx = obj.target.getContext('2d');
+                ctx.clearRect(0, 0, obj.target.width, obj.target.height);
+                
+                if (obj.mask && obj.mask.complete && obj.mask.naturalWidth !== 0) {
+                    ctx.drawImage(obj.mask, 0, 0, obj.target.width, obj.target.height);
+                    ctx.globalCompositeOperation = 'source-in';
+                    ctx.fillStyle = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+                    ctx.fillRect(0, 0, obj.target.width, obj.target.height);
+                    
+                    ctx.globalCompositeOperation = 'multiply';
+                    ctx.drawImage(obj.mask, 0, 0, obj.target.width, obj.target.height);
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+            });
+        }
+        // --- 修正: 操作回数を加算する共通ハンドラに変更 ---
+        const handleSliderInput = () => {
+            totalInteractions++;
+            saveCurrentSliderValues();
+            updateColor();
+        };
+
+        sliderTone.addEventListener('input', handleSliderInput);
+        sliderBrightness.addEventListener('input', handleSliderInput);
+        sliderChroma.addEventListener('input', handleSliderInput);
+
+        window.addEventListener('load', () => { 
+            setTimeout(() => {
+                updateColor();
+                updateReferenceSwatch();
+            }, 100); 
+        });
+
+        canvases.forEach(obj => { 
+            if (obj.mask) obj.mask.addEventListener('load', updateColor);
+        });
+
+        // =========================================================================
+        // 5. データ送信 (Google Forms)
+        // =========================================================================
+        btnSubmit.addEventListener('click', async () => {
+        // --- 追加: 最後の色での時間と総時間の確定 ---
+            const now = performance.now();
+            if (colorSwitchTime) {
+                colorDurations[currentBaseColor] += (now - colorSwitchTime);
+            }
+            saveCurrentSliderValues();
+
+            const totalDurationSec = ((now - experimentStartTime) / 1000).toFixed(1);
+            const perColorSec = {};
+            for (const c in colorDurations) {
+                perColorSec[c] = (colorDurations[c] / 1000).toFixed(1);
+            }
+
+            const subjectId = prompt("Please enter Participant / Subject ID:", "SUB001");
+            if (!subjectId) return; 
+
+            const meta = await collectDeviceMetadata();
+
+            const form = document.createElement('form');
+            form.action = 'https://docs.google.com/forms/d/e/1FAIpQLSc_Ki8iRAyW6ir83W4olAFg83hwCK-ZTU1rEDZkMDCtwQd0Kg/formResponse'; 
+            form.method = 'POST';
+            form.target = 'hidden_iframe'; 
+
+            const data = {
+                'entry.595584923': subjectId,
+                'entry.2086807986': experimentData.Red.tone,
+                'entry.1142973013': experimentData.Red.brightness,
+                'entry.1337946052': experimentData.Red.chroma,
+                'entry.1850883758': experimentData.Yellow.tone,
+                'entry.1618931469': experimentData.Yellow.brightness,
+                'entry.1563211256': experimentData.Yellow.chroma,
+                'entry.1962435276': experimentData.Green.tone,
+                'entry.490877653': experimentData.Green.brightness,
+                'entry.265959553': experimentData.Green.chroma,
+                'entry.1553293052': experimentData.Blue.tone,
+                'entry.1663261293': experimentData.Blue.brightness,
+                'entry.1563660912': experimentData.Blue.chroma,
+                'entry.1403758792': experimentData.Purple.tone,
+                'entry.2042718259': experimentData.Purple.brightness,
+                'entry.1279091193': experimentData.Purple.chroma,
+                'entry.1596853105': experimentData.Grey.tone,       
+                'entry.1108198676': experimentData.Grey.brightness, 
+                'entry.343306868': experimentData.Grey.chroma,    
+            // --- メタデータ送信用のentryがある場合 ---
+                'entry.1612283919': meta.os_type,             // OS名(Windows, macOS等)
+                'entry.513409695': meta.browser,             // ブラウザ（Chrome, Safari等）
+                'entry.2054478776': meta.color_gamut,         // ディスプレイ色域 (srgb, p3, rec2020)
+                'entry.1589360129': meta.dynamic_range,       // HDR対応状況（SDR / HDR）
+                'entry.964789757': meta.device_pixel_ratio,  // デバイスピクセル比（1.0, 2.0等）
+                'entry.307517157': meta.gpu_renderer,         // GPUレンダラー名
+                'entry.834764872': meta.cpu_cores,            //CPU論理コア数
+                'entry.1839611389': meta.device_memory,       //搭載メモリ目安(GB)
+                'entry.1892187616': meta.viewport_size,       //ブラウザ表示サイズ
+                'entry.1676393109': meta.screen_avail,        //画面有効領域
+                'entry.718740834': meta.dark_mode,            //OSテーマモード（dark/light)
+                'entry.628506863': meta.touch_points,          //タッチ操作点数
+                // --- 追加: Googleフォーム側で新しく用意した entry 番号を割り当て ---
+                'entry.1308585524': envData.ambient_light,          // 照明環境
+                'entry.187334834': envData.screen_filter,          // ブルーライトカット有無
+                'entry.479987348': totalDurationSec,               // 実験総所要時間（秒）
+                'entry.286766562': JSON.stringify(perColorSec),    // 各色の所要時間（秒）
+                'entry.424187628': totalInteractions               // スライダー操作総数
+            };
+
+            for (const key in data) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = key;
+                input.value = data[key];
+                form.appendChild(input);
+            }
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+            alert(`Experiment data for all 6 colors submitted successfully!\nSubject ID: ${subjectId}`);
+        });
+    </script>
+</body>
+</html> 
+ 
+
